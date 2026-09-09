@@ -54,4 +54,25 @@ describe('compiling a config which imports .json files', () => {
             JSON.parse(await readFile(join(tempDir, 'my-plugin', 'src', 'plugin-data.json'), 'utf-8')),
         ).toEqual({ sheetId: 'abc123' });
     });
+    // A package.json reached through the import graph must not be copied. In a
+    // nested directory its "type" field decides how the compiled .js files beside
+    // it are loaded, so copying it makes those files fail to load.
+    it('should not copy a package.json into the output', { timeout: 60_000 }, async () => {
+        const tempDir = join(__dirname, './__temp/json-pkg');
+        await rm(tempDir, { recursive: true, force: true });
+
+        await compile({
+            outputPath: tempDir,
+            vendureConfigPath: join(__dirname, 'fixtures-json-pkg', 'vendure-config.ts'),
+            logger: process.env.LOG ? debugLogger : noopLogger,
+            module: 'commonjs',
+        }).catch(() => undefined);
+
+        await expect(readFile(join(tempDir, 'my-plugin', 'package.json'), 'utf-8')).rejects.toThrow();
+        // The output root keeps the generated stub, not the project's own file.
+        expect(JSON.parse(await readFile(join(tempDir, 'package.json'), 'utf-8'))).toEqual({
+            type: 'commonjs',
+            private: true,
+        });
+    });
 });
